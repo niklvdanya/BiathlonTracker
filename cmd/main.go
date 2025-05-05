@@ -12,56 +12,96 @@ import (
 	"github.com/niklvdanya/BiathlonTracker/internal/report"
 )
 
-func main() {
-	if _, err := os.Stat("config.json"); os.IsNotExist(err) {
-		fmt.Println("Ошибка: файл config.json не найден")
-		return
+const (
+	configFile = "config.json"
+	eventsFile = "events.txt"
+)
+
+type BiathlonService struct {
+	Parser    event.EventParser
+	Processor event.EventProcessor
+	Reporter  report.Reporter
+}
+
+func NewBiathlonService() *BiathlonService {
+	parser := &event.DefaultEventParser{}
+	processor := &event.DefaultEventProcessor{}
+	reporter := &report.DefaultReporter{}
+
+	return &BiathlonService{
+		Parser:    parser,
+		Processor: processor,
+		Reporter:  reporter,
 	}
-	if _, err := os.Stat("events.txt"); os.IsNotExist(err) {
-		fmt.Println("Ошибка: файл events.txt не найден")
+}
+
+func main() {
+	if !checkFiles() {
 		return
 	}
 
-	cfg, err := config.Load("config.json")
+	service := NewBiathlonService()
+
+	cfg, err := config.Load(configFile)
 	if err != nil {
 		fmt.Printf("Error loading config: %v\n", err)
 		return
 	}
 
-	events, err := event.LoadEvents("events.txt")
+	events, err := service.Parser.Parse(eventsFile)
 	if err != nil {
 		fmt.Printf("Error loading events: %v\n", err)
 		return
 	}
 
-	for i := range events {
-		if events[i].EventID == 11 && strings.Contains(events[i].ExtraParams, "Lost in the forest") {
-			shotCount := 0
-			hasEventID6 := false
-			for j := range events {
-				if events[j].EventID == 6 && events[j].CompetitorID == events[i].CompetitorID {
-					shotCount++
-					if events[j].ExtraParams == "3" {
-						hasEventID6 = true
-					}
-				}
-			}
+	events = handleLostEvents(events)
+	competitors := service.Processor.Process(events, cfg)
 
-			if shotCount < 5 {
-				if !hasEventID6 {
-					missEvent := model.Event{
-						Time:         events[i].Time.Add(-time.Second * 5),
-						EventID:      6,
-						CompetitorID: events[i].CompetitorID,
-						ExtraParams:  "3",
-					}
-					events = append(events, missEvent)
+	service.Reporter.OutputLog(events)
+	service.Reporter.OutputFinalReport(competitors, cfg)
+}
+
+func checkFiles() bool {
+	if _, err := os.Stat(configFile); os.IsNotExist(err) {
+		fmt.Printf("Ошибка: файл %s не найден\n", configFile)
+		return false
+	}
+	if _, err := os.Stat(eventsFile); os.IsNotExist(err) {
+		fmt.Printf("Ошибка: файл %s не найден\n", eventsFile)
+		return false
+	}
+	return true
+}
+
+func handleLostEvents(events []model.Event) []model.Event {
+	for i := range events {
+		if events[i].EventID == model.EventLostInForest && strings.Contains(events[i].ExtraParams, "Lost in the forest") {
+			shotCount, hasEventID6 := countShotsForCompetitor(events, events[i].CompetitorID)
+
+			if shotCount < 5 && !hasEventID6 {
+				missEvent := model.Event{
+					Time:         events[i].Time.Add(-time.Second * 5),
+					EventID:      model.EventShot,
+					CompetitorID: events[i].CompetitorID,
+					ExtraParams:  "3",
 				}
+				events = append(events, missEvent)
 			}
 		}
 	}
+	return events
+}
 
-	competitors := event.ProcessEvents(events, cfg)
-	report.OutputLog(events)
-	report.OutputFinalReport(competitors, cfg)
+func countShotsForCompetitor(events []model.Event, competitorID int) (int, bool) {
+	shotCount := 0
+	hasEventID6 := false
+	for j := range events {
+		if events[j].EventID == model.EventShot && events[j].CompetitorID == competitorID {
+			shotCount++
+			if events[j].ExtraParams == "3" {
+				hasEventID6 = true
+			}
+		}
+	}
+	return shotCount, hasEventID6
 }
