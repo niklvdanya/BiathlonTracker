@@ -19,9 +19,17 @@ const (
 	EventLostInForest = 11
 	EventDisqualified = 32
 	EventFinished     = 33
-)
 
-const (
+	ShotTarget1 = "1"
+	ShotTarget2 = "2"
+	ShotTarget3 = "3"
+	ShotTarget4 = "4"
+	ShotTarget5 = "5"
+
+	TimeFormat       = "15:04:05.000"
+	ZeroTimeString   = "00:00:00.000"
+	LostInForestText = "Lost in the forest"
+
 	StatusFinished     = "Finished"
 	StatusNotFinished  = "NotFinished"
 	StatusNotStarted   = "NotStarted"
@@ -31,20 +39,20 @@ const (
 
 type Competitor struct {
 	ID             int
-	RegisteredTime time.Time
-	PlannedStart   time.Time
-	ActualStart    time.Time
-	Status         string
-	LapTimes       []LapInfo
-	PenaltyLapInfo PenaltyInfo
 	CurrentLap     int
 	CurrentFiring  int
 	ShotsHit       int
 	TotalShots     int
 	InPenalty      bool
 	OnFiringRange  bool
-	StatusComment  string
 	MissedShot     bool
+	Status         string
+	StatusComment  string
+	RegisteredTime time.Time
+	PlannedStart   time.Time
+	ActualStart    time.Time
+	LapTimes       []LapInfo
+	PenaltyLapInfo PenaltyInfo
 }
 
 type LapInfo struct {

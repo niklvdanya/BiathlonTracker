@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -12,56 +14,66 @@ import (
 	"github.com/niklvdanya/BiathlonTracker/internal/report"
 )
 
-const (
-	configFile = "config.json"
-	eventsFile = "events.txt"
-)
-
 type BiathlonService struct {
 	Parser    event.EventParser
 	Processor event.EventProcessor
 	Reporter  report.Reporter
+	Config    config.Config
 }
 
-func NewBiathlonService() *BiathlonService {
-	parser := &event.DefaultEventParser{}
-	processor := &event.DefaultEventProcessor{}
-	reporter := &report.DefaultReporter{}
-
+func NewBiathlonService(parser event.EventParser, processor event.EventProcessor, reporter report.Reporter, cfg config.Config) *BiathlonService {
 	return &BiathlonService{
 		Parser:    parser,
 		Processor: processor,
 		Reporter:  reporter,
+		Config:    cfg,
 	}
 }
 
 func main() {
-	if !checkFiles() {
+	configFileFlag := flag.String("config", "config.json", "Path to configuration file")
+	eventsFileFlag := flag.String("events", "events.txt", "Path to events file")
+	parallelFlag := flag.Bool("parallel", false, "Use parallel processing")
+	flag.Parse()
+
+	if !checkFiles(*configFileFlag, *eventsFileFlag) {
 		return
 	}
 
-	service := NewBiathlonService()
+	parser := &event.DefaultEventParser{}
+	processor := &event.DefaultEventProcessor{}
+	reporter := &report.DefaultReporter{}
 
-	cfg, err := config.Load(configFile)
+	cfg, err := config.Load(*configFileFlag)
 	if err != nil {
 		fmt.Printf("Error loading config: %v\n", err)
 		return
 	}
 
-	events, err := service.Parser.Parse(eventsFile)
+	service := NewBiathlonService(parser, processor, reporter, cfg)
+
+	events, err := service.Parser.Parse(*eventsFileFlag)
 	if err != nil {
 		fmt.Printf("Error loading events: %v\n", err)
 		return
 	}
 
 	events = handleLostEvents(events)
-	competitors := service.Processor.Process(events, cfg)
+
+	ctx := context.Background()
+	var competitors map[int]*model.Competitor
+
+	if *parallelFlag {
+		competitors = event.ProcessEventsParallel(ctx, events, cfg)
+	} else {
+		competitors = service.Processor.Process(ctx, events, cfg)
+	}
 
 	service.Reporter.OutputLog(events)
 	service.Reporter.OutputFinalReport(competitors, cfg)
 }
 
-func checkFiles() bool {
+func checkFiles(configFile, eventsFile string) bool {
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
 		fmt.Printf("Ошибка: файл %s не найден\n", configFile)
 		return false
@@ -75,7 +87,7 @@ func checkFiles() bool {
 
 func handleLostEvents(events []model.Event) []model.Event {
 	for i := range events {
-		if events[i].EventID == model.EventLostInForest && strings.Contains(events[i].ExtraParams, "Lost in the forest") {
+		if events[i].EventID == model.EventLostInForest && strings.Contains(events[i].ExtraParams, model.LostInForestText) {
 			shotCount, hasEventID6 := countShotsForCompetitor(events, events[i].CompetitorID)
 
 			if shotCount < 5 && !hasEventID6 {
@@ -83,7 +95,7 @@ func handleLostEvents(events []model.Event) []model.Event {
 					Time:         events[i].Time.Add(-time.Second * 5),
 					EventID:      model.EventShot,
 					CompetitorID: events[i].CompetitorID,
-					ExtraParams:  "3",
+					ExtraParams:  model.ShotTarget3,
 				}
 				events = append(events, missEvent)
 			}
@@ -98,7 +110,7 @@ func countShotsForCompetitor(events []model.Event, competitorID int) (int, bool)
 	for j := range events {
 		if events[j].EventID == model.EventShot && events[j].CompetitorID == competitorID {
 			shotCount++
-			if events[j].ExtraParams == "3" {
+			if events[j].ExtraParams == model.ShotTarget3 {
 				hasEventID6 = true
 			}
 		}

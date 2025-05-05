@@ -18,7 +18,7 @@ func LoadEvents(filename string) ([]model.Event, error) {
 	}
 
 	lines := strings.Split(string(data), "\n")
-	events := []model.Event{}
+	events := make([]model.Event, 0, len(lines))
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -82,7 +82,7 @@ func parseTimeString(timeStr string) (time.Time, error) {
 	now := time.Now()
 	baseDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
 
-	eventTime, err := time.Parse("15:04:05.000", timeStr)
+	eventTime, err := time.Parse(model.TimeFormat, timeStr)
 	if err != nil {
 		return time.Time{}, err
 	}
