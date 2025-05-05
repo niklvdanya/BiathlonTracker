@@ -195,7 +195,7 @@ func handleShotEvent(competitor *model.Competitor, event model.Event) {
 	}
 }
 
-func handleLeaveFireEvent(competitor *model.Competitor, event model.Event) {
+func handleLeaveFireEvent(competitor *model.Competitor, _ model.Event) {
 	competitor.OnFiringRange = false
 }
 
